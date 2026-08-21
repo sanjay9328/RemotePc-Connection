@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Remote PC</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #10151b; color: #edf2f7; padding: 18px; }
+    main { max-width: 560px; margin: auto; display: grid; gap: 14px; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 22px; margin: 0; letter-spacing: .02em; }
+    #status { color: #7ee2a8; font-size: 13px; }
+    #pad { height: min(58vh, 470px); min-height: 280px; background: #18232b; border: 1px solid #31434d; border-radius: 16px; display: grid; place-items: center; touch-action: none; user-select: none; }
+    #pad span { color: #71838f; font-size: 14px; }
+    .buttons, .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    button, input { min-height: 48px; border: 1px solid #3a4c56; border-radius: 10px; background: #202e36; color: inherit; font: inherit; }
+    button:active { background: #3a5965; transform: scale(.98); }
+    input { width: 100%; padding: 0 14px; }
+    .type { display: flex; gap: 8px; }
+    .type button { padding: 0 18px; white-space: nowrap; }
+    .quick button { font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <header><h1>Remote PC</h1><span id="status">Connected</span></header>
+  <section id="pad" aria-label="Touchpad"><span>Drag to move cursor<br>Tap to click</span></section>
+  <div class="buttons"><button data-click="left">Left click</button><button data-click="right">Right click</button></div>
+  <div class="type"><input id="text" placeholder="Type on laptop..."><button id="send">Send</button></div>
+  <div class="quick">
+    <button data-key="enter">Enter</button><button data-key="backspace">Backspace</button>
+    <button data-key="space">Space</button><button data-key="escape">Escape</button>
+    <button data-key="volumeup">Volume +</button><button data-key="volumedown">Volume -</button>
+    <button data-key="mute">Mute</button><button data-key="playpause">Play / Pause</button>
+  </div>
+</main>
+<script>
+  const pad = document.querySelector('#pad');
+  const status = document.querySelector('#status');
+  let last = null;
+  let start = null;
+  const call = (path, body) => fetch('/api/control/' + path, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })
+    .then(response => { if (!response.ok) throw new Error(response.status); status.textContent = 'Connected'; })
+    .catch(error => status.textContent = error.message === '503' ? 'Desktop unavailable' : 'Request failed');
+  fetch('/api/control/status').then(response => { if (!response.ok) throw new Error(); }).catch(() => status.textContent = 'Desktop unavailable');
+  pad.addEventListener('pointerdown', event => { last = event; start = event; pad.setPointerCapture(event.pointerId); });
+  pad.addEventListener('pointermove', event => {
+    if (!last) return;
+    call('move', {dx: Math.round((event.clientX - last.clientX) * 1.7), dy: Math.round((event.clientY - last.clientY) * 1.7)});
+    last = event;
+  });
+  pad.addEventListener('pointerup', event => { if (start && Math.abs(event.clientX - start.clientX) < 8 && Math.abs(event.clientY - start.clientY) < 8) call('click', {button: 'left'}); last = null; start = null; });
+  pad.addEventListener('wheel', event => { event.preventDefault(); call('scroll', {amount: Math.sign(event.deltaY)}); }, {passive: false});
+  document.querySelectorAll('[data-click]').forEach(button => button.onclick = () => call('click', {button: button.dataset.click}));
+  document.querySelectorAll('[data-key]').forEach(button => button.onclick = () => call('key', {key: button.dataset.key}));
+  document.querySelector('#send').onclick = () => { const input = document.querySelector('#text'); if (input.value) { call('type', {text: input.value}); input.value = ''; } };
+</script>
+</body>
+</html>
